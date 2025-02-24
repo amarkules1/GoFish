@@ -1,6 +1,7 @@
 # Welcome to your Expo app 👋
 
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Code generated using bolt.new... It's a little buggy but pretty impressive for an AI generated app.
 
 ## Get started
 
