@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, Modal } from 'react-native';
 import { router } from 'expo-router';
 import { useStore } from '../store/gameStore';
-import { X, ChevronLeft } from 'lucide-react-native';
+import { X, ChevronLeft, Trophy } from 'lucide-react-native';
 
 interface CardProps {
   rank: string;
@@ -73,17 +73,56 @@ function PlayerSelection({ onSelect }: { onSelect: (players: number) => void }) 
   );
 }
 
+function GameOverModal({ visible, winner, isTie, score, onNewGame }: { 
+  visible: boolean; 
+  winner: string | null; 
+  isTie: boolean;
+  score: number;
+  onNewGame: () => void;
+}) {
+  return (
+    <Modal
+      visible={visible}
+      transparent={true}
+      animationType="fade"
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <Trophy color="#F59E0B" size={48} style={styles.trophyIcon} />
+          <Text style={styles.modalTitle}>Game Over!</Text>
+          
+          {isTie ? (
+            <Text style={styles.modalText}>It's a tie with {score} points!</Text>
+          ) : (
+            <Text style={styles.modalText}>{winner} wins with {score} points!</Text>
+          )}
+          
+          <Pressable style={styles.newGameButton} onPress={onNewGame}>
+            <Text style={styles.newGameButtonText}>New Game</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 export default function Game() {
-  const [showPlayerSelection, setShowPlayerSelection] = useState(true);
+  const [showPlayerSelection, setShowPlayerSelection] = useState(false);
   const [selectedCard, setSelectedCard] = useState<string | null>(null);
   const [selectedPlayer, setSelectedPlayer] = useState<number | null>(null);
   const store = useStore();
 
   useEffect(() => {
-    if (!store.hasExistingGame) {
-      setShowPlayerSelection(true);
-    }
+    // Only show player selection if there's no existing game
+    setShowPlayerSelection(!store.hasExistingGame);
   }, [store.hasExistingGame]);
+
+  // Clear selected card when it's not the user's turn
+  useEffect(() => {
+    if (store.currentPlayerIndex !== 0) {
+      setSelectedCard(null);
+    }
+  }, [store.currentPlayerIndex]);
 
   const handlePlayerSelect = (numPlayers: number) => {
     store.initializeGame(numPlayers);
@@ -91,7 +130,15 @@ export default function Game() {
   };
 
   const handleCardSelect = (rank: string) => {
-    setSelectedCard(rank);
+    // Only allow card selection if it's the user's turn
+    if (store.currentPlayerIndex === 0) {
+      // Toggle selection if the same card is tapped again
+      if (selectedCard === rank) {
+        setSelectedCard(null);
+      } else {
+        setSelectedCard(rank);
+      }
+    }
   };
 
   const handlePlayerTargetSelect = async (targetId: number) => {
@@ -101,7 +148,7 @@ export default function Game() {
         const drawnCard = store.drawCard(0);
         // Wait 3 seconds before computer's turn
         await new Promise(resolve => setTimeout(resolve, 3000));
-        store.currentPlayerIndex = 1;
+        store.currentPlayerIndex = (store.currentPlayerIndex + 1) % store.players.length;
         computerTurn();
       }
       setSelectedCard(null);
@@ -128,7 +175,11 @@ export default function Game() {
     if (!gotCard) {
       store.drawCard(computer.id, randomCard.rank);
       store.currentPlayerIndex = (store.currentPlayerIndex + 1) % store.players.length;
-      if (store.players[store.currentPlayerIndex].isComputer) {
+      
+      // Check if it's now the user's turn
+      if (store.currentPlayerIndex === 0) {
+        store.setYourTurn();
+      } else if (store.players[store.currentPlayerIndex].isComputer) {
         // Wait 3 seconds before next computer's turn
         await new Promise(resolve => setTimeout(resolve, 3000));
         computerTurn();
@@ -138,6 +189,11 @@ export default function Game() {
       await new Promise(resolve => setTimeout(resolve, 3000));
       computerTurn();
     }
+  };
+
+  const handleNewGame = () => {
+    store.resetGame();
+    setShowPlayerSelection(true);
   };
 
   const renderAskButtons = () => {
@@ -163,6 +219,22 @@ export default function Game() {
     );
   };
 
+  const renderDeck = () => {
+    if (store.deck.length === 0) return null;
+    
+    return (
+      <View style={styles.deckContainer}>
+        <Card 
+          rank="" 
+          suit="hearts" 
+          faceDown={true} 
+          style={styles.deckCard}
+        />
+        <Text style={styles.deckCount}>{store.deck.length} cards left</Text>
+      </View>
+    );
+  };
+
   const renderPlayerHand = (playerId: number, position: 'bottom' | 'left' | 'top' | 'right') => {
     const player = store.players.find(p => p.id === playerId);
     if (!player) return null;
@@ -181,26 +253,44 @@ export default function Game() {
       <View style={[styles.hand, containerStyle]}>
         <Text style={styles.playerName}>{player.name} (Score: {player.score})</Text>
         <View style={styles.cards}>
-          {cards.map((card, index) => (
-            <Card
-              key={`${card.rank}-${card.suit}-${index}`}
-              rank={card.rank}
-              suit={card.suit}
-              faceDown={player.isComputer}
-              onPress={() => !player.isComputer && handleCardSelect(card.rank)}
-              style={[
-                styles.cardInHand,
-                { marginRight: index > 0 ? -40 : 0 },
-              ]}
-              isSelected={selectedCard === card.rank}
-              isUserCard={!player.isComputer}
-            />
-          ))}
+          {cards.length > 0 ? (
+            cards.map((card, index) => (
+              <Card
+                key={`${card.rank}-${card.suit}-${index}`}
+                rank={card.rank}
+                suit={card.suit}
+                faceDown={player.isComputer}
+                onPress={() => !player.isComputer && handleCardSelect(card.rank)}
+                style={[
+                  styles.cardInHand,
+                  { marginRight: index > 0 ? -40 : 0 },
+                ]}
+                isSelected={selectedCard === card.rank}
+                isUserCard={!player.isComputer}
+              />
+            ))
+          ) : (
+            <Text style={styles.noCardsText}>No cards</Text>
+          )}
         </View>
       </View>
     );
   };
 
+  // If there's no existing game or we're showing player selection, render the player selection screen
+  if (showPlayerSelection) {
+    return (
+      <View style={styles.container}>
+        <Pressable style={styles.backButton} onPress={() => router.back()}>
+          <ChevronLeft color="#1E3A8A" size={24} />
+          <Text style={styles.backButtonText}>Back</Text>
+        </Pressable>
+        <PlayerSelection onSelect={handlePlayerSelect} />
+      </View>
+    );
+  }
+
+  // Otherwise, render the game
   return (
     <View style={styles.container}>
       <Pressable style={styles.backButton} onPress={() => router.back()}>
@@ -210,17 +300,22 @@ export default function Game() {
 
       <Text style={styles.lastAction}>{store.lastAction}</Text>
 
-      {showPlayerSelection ? (
-        <PlayerSelection onSelect={handlePlayerSelect} />
-      ) : (
-        <View style={styles.gameTable}>
-          {renderAskButtons()}
-          {renderPlayerHand(0, 'bottom')}
-          {store.players.length > 1 && renderPlayerHand(1, 'top')}
-          {store.players.length > 2 && renderPlayerHand(2, 'left')}
-          {store.players.length > 3 && renderPlayerHand(3, 'right')}
-        </View>
-      )}
+      <View style={styles.gameTable}>
+        {renderAskButtons()}
+        {renderDeck()}
+        {renderPlayerHand(0, 'bottom')}
+        {store.players.length > 1 && renderPlayerHand(1, 'top')}
+        {store.players.length > 2 && renderPlayerHand(2, 'left')}
+        {store.players.length > 3 && renderPlayerHand(3, 'right')}
+        
+        <GameOverModal 
+          visible={store.gameOver} 
+          winner={store.winner?.name || null}
+          isTie={store.isTie}
+          score={store.winner?.score || 0}
+          onNewGame={handleNewGame}
+        />
+      </View>
     </View>
   );
 }
@@ -290,6 +385,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+    zIndex: 10,
   },
   askPrompt: {
     fontSize: 18,
@@ -317,22 +413,27 @@ const styles = StyleSheet.create({
   hand: {
     position: 'absolute',
     alignItems: 'center',
-    width: '100%',
     padding: 20,
   },
   bottomHand: {
     bottom: 0,
+    width: '100%',
   },
   topHand: {
     top: 0,
+    width: '100%',
   },
   leftHand: {
-    left: 0,
-    transform: [{ rotate: '90deg' }],
+    left: -160,
+    top: '50%',
+    transform: [{ rotate: '90deg' }, { translateY: -50 }],
+    width: 300,
   },
   rightHand: {
-    right: 0,
-    transform: [{ rotate: '-90deg' }],
+    right: -160,
+    top: '50%',
+    transform: [{ rotate: '-90deg' }, { translateY: -50 }],
+    width: 300,
   },
   playerName: {
     fontSize: 16,
@@ -343,6 +444,7 @@ const styles = StyleSheet.create({
   cards: {
     flexDirection: 'row',
     alignItems: 'center',
+    minHeight: 120,
   },
   card: {
     width: 80,
@@ -378,5 +480,63 @@ const styles = StyleSheet.create({
   cardCenter: {
     fontSize: 24,
     textAlign: 'center',
+  },
+  deckContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deckCard: {
+    marginBottom: 8,
+  },
+  deckCount: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1E3A8A',
+  },
+  noCardsText: {
+    color: '#64748B',
+    fontStyle: 'italic',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 24,
+    width: '80%',
+    maxWidth: 400,
+    alignItems: 'center',
+  },
+  trophyIcon: {
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1E3A8A',
+    marginBottom: 12,
+  },
+  modalText: {
+    fontSize: 18,
+    color: '#334155',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  newGameButton: {
+    backgroundColor: '#3B82F6',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    width: '100%',
+    alignItems: 'center',
+  },
+  newGameButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
