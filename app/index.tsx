@@ -5,9 +5,11 @@ import * as StoreReview from 'expo-store-review';
 import { Play, Book, Star, History } from 'lucide-react-native';
 
 export default function Home() {
+  const store = useStore();
   const hasExistingGame = useStore((state) => state.hasExistingGame);
 
   const handleNewGame = () => {
+    store.hasExistingGame = false;
     router.push('/game');
   };
 

@@ -26,8 +26,8 @@ interface GameState {
   isTie: boolean;
   initializeGame: (numPlayers: number) => void;
   dealCards: () => void;
-  drawCard: (playerId: number, askedRank?: string) => Card | null;
-  askForCard: (askingPlayerId: number, targetPlayerId: number, rank: string) => boolean;
+  drawCard: (playerId: number, targetPlayerId: number, askedRank?: string) => Card | null;
+  askForCard: (askingPlayerId: number, targetPlayerId: number, rank: string) => Promise<boolean>;
   checkForPairs: (playerId: number) => void;
   setYourTurn: () => void;
   checkPlayerHand: (playerId: number) => void;
@@ -102,11 +102,11 @@ export const useStore = create<GameState>()(
               const targetPlayer = otherPlayers[Math.floor(Math.random() * otherPlayers.length)];
             
               // Wait 3 seconds before action
-              await new Promise(resolve => setTimeout(resolve, 3000));
+              await new Promise(resolve => setTimeout(resolve, 2000));
             
-              const gotCard = get().askForCard(computer.id, targetPlayer.id, randomCard.rank);
+              const gotCard = await get().askForCard(computer.id, targetPlayer.id, randomCard.rank);
               if (!gotCard) {
-                get().drawCard(computer.id, randomCard.rank);
+                get().drawCard(computer.id, targetPlayer.id, randomCard.rank);
                 set(state => ({
                   currentPlayerIndex: (state.currentPlayerIndex + 1) % state.players.length
                 }));
@@ -116,12 +116,12 @@ export const useStore = create<GameState>()(
                   get().setYourTurn();
                 } else if (get().players[get().currentPlayerIndex].isComputer) {
                   // Wait 3 seconds before next computer's turn
-                  await new Promise(resolve => setTimeout(resolve, 3000));
+                  await new Promise(resolve => setTimeout(resolve, 2000));
                   computerTurn();
                 }
               } else {
                 // Computer gets another turn
-                await new Promise(resolve => setTimeout(resolve, 3000));
+                await new Promise(resolve => setTimeout(resolve, 2000));
                 computerTurn();
               }
             };
@@ -147,7 +147,7 @@ export const useStore = create<GameState>()(
         });
       },
 
-      drawCard: (playerId, askedRank) => {
+      drawCard: (playerId, targetPlayerId, askedRank) => {
         const { deck, players } = get();
         if (deck.length === 0) return null;
 
@@ -161,8 +161,9 @@ export const useStore = create<GameState>()(
         );
 
         const player = players.find(p => p.id === playerId)!;
+        const targetPlayer = players.find(p => p.id === targetPlayerId)!;
         const message = askedRank 
-          ? `${player.name} asked for ${askedRank}s - Go Fish! Drew a card.`
+          ? `${player.name} asked ${targetPlayer.name} for ${askedRank}s - Go Fish! Drew a card.`
           : `${player.name} drew a card`;
 
         set({ 
@@ -180,7 +181,7 @@ export const useStore = create<GameState>()(
         return card;
       },
 
-      askForCard: (askingPlayerId, targetPlayerId, rank) => {
+      askForCard: async (askingPlayerId, targetPlayerId, rank) => {
         const { players } = get();
         const askingPlayer = players.find(p => p.id === askingPlayerId)!;
         const targetPlayer = players.find(p => p.id === targetPlayerId)!;
@@ -206,8 +207,10 @@ export const useStore = create<GameState>()(
 
           set({
             players: newPlayers,
-            lastAction: `${askingPlayer.name} got ${matchingCards.length} ${rank}(s) from ${targetPlayer.name}`,
+            lastAction: `${askingPlayer.name} got ${matchingCards.length} ${rank}${matchingCards.length > 2 ? 's' : ''} from ${targetPlayer.name}`,
           });
+
+          await new Promise(resolve => setTimeout(resolve, 2000));
 
           // Check for pairs after receiving cards
           get().checkForPairs(askingPlayerId);
@@ -221,6 +224,7 @@ export const useStore = create<GameState>()(
         set({
           lastAction: `${askingPlayer.name} asked ${targetPlayer.name} for ${rank}s - Go Fish!`,
         });
+        await new Promise(resolve => setTimeout(resolve, 2000));
         return false;
       },
 
@@ -264,7 +268,7 @@ export const useStore = create<GameState>()(
 
           set({
             players: newPlayers,
-            lastAction: `${player.name} matched ${pairs.length} pair(s) of ${pairs.join(', ')}s!`,
+            lastAction: `${player.name} matched ${pairs.length} pair${pairs.length > 2 ? 's' : ''}  of ${pairs.join(', ')}s!`,
           });
           
           // Check if player needs more cards after matching pairs

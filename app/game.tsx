@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Pressable, Modal } from 'react-native';
 import { router } from 'expo-router';
 import { useStore } from '../store/gameStore';
 import { X, ChevronLeft, Trophy } from 'lucide-react-native';
+import { store } from 'expo-router/build/global-state/router-store';
 
 interface CardProps {
   rank: string;
@@ -143,11 +144,11 @@ export default function Game() {
 
   const handlePlayerTargetSelect = async (targetId: number) => {
     if (selectedCard && store.currentPlayerIndex === 0) {
-      const gotCard = store.askForCard(0, targetId, selectedCard);
+      const gotCard = await store.askForCard(0, targetId, selectedCard);
       if (!gotCard) {
-        const drawnCard = store.drawCard(0);
-        // Wait 3 seconds before computer's turn
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        const drawnCard = store.drawCard(0, targetId);
+        // Wait 2 seconds before computer's turn
+        await new Promise(resolve => setTimeout(resolve, 2000));
         store.currentPlayerIndex = (store.currentPlayerIndex + 1) % store.players.length;
         computerTurn();
       }
@@ -169,11 +170,11 @@ export default function Game() {
     const targetPlayer = otherPlayers[Math.floor(Math.random() * otherPlayers.length)];
 
     // Wait 3 seconds before action
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
-    const gotCard = store.askForCard(computer.id, targetPlayer.id, randomCard.rank);
+    const gotCard = await store.askForCard(computer.id, targetPlayer.id, randomCard.rank);
     if (!gotCard) {
-      store.drawCard(computer.id, randomCard.rank);
+      store.drawCard(computer.id, targetPlayer.id, randomCard.rank);
       store.currentPlayerIndex = (store.currentPlayerIndex + 1) % store.players.length;
       
       // Check if it's now the user's turn
@@ -181,12 +182,12 @@ export default function Game() {
         store.setYourTurn();
       } else if (store.players[store.currentPlayerIndex].isComputer) {
         // Wait 3 seconds before next computer's turn
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        await new Promise(resolve => setTimeout(resolve, 2000));
         computerTurn();
       }
     } else {
       // Computer gets another turn
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise(resolve => setTimeout(resolve, 2000));
       computerTurn();
     }
   };
@@ -304,8 +305,8 @@ export default function Game() {
         {renderAskButtons()}
         {renderDeck()}
         {renderPlayerHand(0, 'bottom')}
-        {store.players.length > 1 && renderPlayerHand(1, 'top')}
-        {store.players.length > 2 && renderPlayerHand(2, 'left')}
+        {store.players.length > 1 && renderPlayerHand(1, store.players.length == 2 ? 'top' : 'left')}
+        {store.players.length > 2 && renderPlayerHand(2, 'top')}
         {store.players.length > 3 && renderPlayerHand(3, 'right')}
         
         <GameOverModal 
@@ -329,6 +330,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
+    marginTop: 24,
   },
   backButtonText: {
     color: '#1E3A8A',
@@ -425,13 +427,13 @@ const styles = StyleSheet.create({
   },
   leftHand: {
     left: -160,
-    top: '50%',
+    top: '33%',
     transform: [{ rotate: '90deg' }, { translateY: -50 }],
     width: 300,
   },
   rightHand: {
     right: -160,
-    top: '50%',
+    top: '33%',
     transform: [{ rotate: '-90deg' }, { translateY: -50 }],
     width: 300,
   },
